@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Jeu de casse-têtes : 21 jeux de 25 niveaux et une aventure de 25 tiroirs.">
+<meta name="description" content="Jeu de casse-têtes : 21 jeux de 25 niveaux, une aventure de 25 tiroirs et un classement des joueurs.">
 <style>html{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>Le Cabinet des Énigmes</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -318,6 +318,44 @@ button{font:inherit;color:inherit}
 .opts button.gone{opacity:.25}
 .cat-card .cname,.cat-card .cdesc{min-width:0}
 
+/* Vies, code secret, classement */
+.lives{font-size:15px;color:var(--muted);display:flex;gap:4px;align-items:center}
+.heart{color:var(--bad);font-size:24px;line-height:1}
+.heart.lost{color:var(--line)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.nc.wrong,.nc.wrong.lock{background:color-mix(in srgb,var(--bad) 18%,var(--surface));box-shadow:inset 0 0 0 2px var(--bad)}
+.nc.wrong::after{color:var(--bad)!important}
+.mm-legend{display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:center;font-size:14px;color:var(--muted)}
+.mm-legend span{display:flex;align-items:center;gap:6px}
+.fbm{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;font-style:normal;font-size:13px;font-weight:700;flex:none}
+.fbm.ok{background:var(--ok);color:var(--surface)}
+.fbm.mid{background:var(--gold);color:#1c1a2b}
+.fbm.no{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.fbs{display:flex;gap:4px;flex-wrap:wrap}
+.mm-input{display:flex;align-items:center;gap:14px;justify-content:center;flex-wrap:wrap;padding:12px 16px;border:2px dashed var(--line);border-radius:12px}
+.mm-slots{display:flex;gap:8px}
+.mm-slots .peg{width:44px;height:44px;font-size:15px}
+.mm-n{font-family:var(--f-mono);font-size:13px;color:var(--muted);min-width:20px;text-align:right}
+.mm-empty{color:var(--muted);font-size:14px}
+.kim-count{font-family:var(--f-display);font-size:96px;font-weight:800;fill:var(--muted)}
+.muted{color:var(--muted)}
+.lb-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.lb-head h2{font-size:24px}
+.lb-me{background:var(--surface);border:1.5px solid var(--line);border-radius:14px;padding:18px;display:grid;gap:10px;margin-bottom:18px;justify-items:start}
+.lb-me:empty{display:none}
+.lb-me h3{font-size:19px}
+.lb-form{justify-content:flex-start}
+.lb-wrap{overflow-x:auto;background:var(--surface);border:1.5px solid var(--line);border-radius:14px}
+table.lb{width:100%;border-collapse:collapse;font-size:15px}
+table.lb th{font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;padding:12px 14px;border-bottom:1.5px solid var(--line);font-weight:500}
+table.lb td{padding:10px 14px;border-bottom:1px solid var(--line)}
+table.lb tr:last-child td{border-bottom:0}
+table.lb .num{font-family:var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+table.lb .rank{font-family:var(--f-mono);font-weight:500;width:56px}
+table.lb .rank.top1,table.lb .rank.top2,table.lb .rank.top3{color:var(--gold);font-size:18px}
+table.lb .lb-name{font-weight:700;max-width:220px;overflow-wrap:anywhere}
+table.lb tr.me td{background:var(--gold-soft)}
+
 @media (max-width:720px){
   .tabs button{font-size:17px;padding:8px 14px}
   .tally{gap:16px}
@@ -360,9 +398,15 @@ button{font:inherit;color:inherit}
     <div class="tabs" role="tablist" aria-label="Mode de jeu">
       <button role="tab" id="tabCat" aria-selected="true">Catalogues</button>
       <button role="tab" id="tabAdv" aria-selected="false">Aventure</button>
+      <button role="tab" id="tabLb" aria-selected="false">Classement</button>
     </div>
     <div id="catPane"></div>
     <div id="advPane" hidden><div id="chapters"></div></div>
+    <div id="lbPane" hidden>
+      <div class="lb-head"><div><h2>Les meilleurs joueurs</h2><p class="muted">Classés par nombre d’étoiles, puis par niveaux réussis.</p></div><button class="btn small" id="lbRefresh">Actualiser</button></div>
+      <div class="lb-me" id="lbMe"></div>
+      <div id="lbList"></div>
+    </div>
     <div class="reset-zone">
       <span id="resetMsg"></span>
       <button class="btn small ghost" id="resetBtn">Effacer ma progression</button>
@@ -477,7 +521,7 @@ try{progress=JSON.parse(localStorage.getItem(KEY))||{}}catch(e){progress={}}
 if(!progress.solved)progress.solved={};
 if(progress.sound===undefined)progress.sound=true;
 if(!progress.cat)progress.cat={};
-if(progress.tab!=='adv')progress.tab='cat';
+if(progress.tab!=='adv'&&progress.tab!=='lb')progress.tab='cat';
 function save(){try{localStorage.setItem(KEY,JSON.stringify(progress))}catch(e){}}
 const isUnlocked=i=>i===0||progress.solved[i-1]!=null||progress.solved[i]!=null||(PUZZLES[i].ch!==PUZZLES[i-1].ch&&!!CHAPTERS[PUZZLES[i].ch].open);
 const TOTAL=PUZZLES.length, MAXSTARS=PUZZLES.length*3;
@@ -535,9 +579,10 @@ function renderCatalogs(){
     root.append(el('section',{class:'cat-group'},el('h2',{},g),grid));
   });
 }
-function syncTabs(){const t=progress.tab;$('#tabCat').setAttribute('aria-selected',String(t==='cat'));$('#tabAdv').setAttribute('aria-selected',String(t==='adv'));$('#catPane').hidden=t!=='cat';$('#advPane').hidden=t!=='adv'}
+function syncTabs(){const t=progress.tab;['cat','adv','lb'].forEach(k=>{const T={cat:'#tabCat',adv:'#tabAdv',lb:'#tabLb'}[k],P={cat:'#catPane',adv:'#advPane',lb:'#lbPane'}[k];$(T).setAttribute('aria-selected',String(t===k));$(P).hidden=t!==k})}
 $('#tabCat').addEventListener('click',()=>{progress.tab='cat';save();syncTabs()});
 $('#tabAdv').addEventListener('click',()=>{progress.tab='adv';save();syncTabs()});
+$('#tabLb').addEventListener('click',()=>{progress.tab='lb';save();syncTabs();lbLoad()});
 $('#continueBtn').addEventListener('click',()=>{const n=nextIndex();openPuzzle(n===-1?0:n)});
 let resetArmed=false;
 $('#resetBtn').addEventListener('click',()=>{
@@ -604,6 +649,7 @@ const api={
       $('#winMsg').textContent=cur.errors?cur.errors+' erreur'+(cur.errors>1?'s':'')+'. On en refait une ?':'Aucune erreur. On en refait une ?';
       $('#winNext').textContent='Encore une partie';$('#winHome').textContent='Catalogue';
     }
+    if(x.mode!=='rand')lbQueue();
     $('#overlay').hidden=false;$('#winNext').focus();
   }
 };
@@ -1133,7 +1179,7 @@ function seqLevel(l){
 const CATS=[
   {id:'suites',group:'Logique',name:'Suites logiques',desc:'Trouve le nombre qui vient ensuite.',make:l=>Object.assign({type:'answer',prompt:'Quel nombre vient ensuite ?',numeric:true,tol:2},seqLevel(l))},
   {id:'sudoku',group:'Logique',name:'Sudoku',desc:'Chaque chiffre une seule fois par ligne, colonne et bloc.',make:l=>l<6?{type:'sudoku',n:4,br:2,bc:2,givens:[10,9,8,8,7,6][l],sub:'4 × 4'}:l<13?{type:'sudoku',n:6,br:2,bc:3,givens:[22,21,20,19,18,17,16][l-6],sub:'6 × 6'}:{type:'sudoku',n:9,br:3,bc:3,givens:[40,38,37,36,35,34,33,32,31,30,29,28][l-13],sub:'9 × 9'}},
-  {id:'nono',group:'Logique',name:'Nonogramme',desc:'Noircis les bonnes cases grâce aux chiffres.',make:l=>{const n=l<6?5:l<13?7:l<19?8:10;return {type:'nonogram',size:n,dens:.58,tol:99,sub:n+' × '+n}}},
+  {id:'nono',group:'Logique',name:'Nonogramme',desc:'Noircis les bonnes cases grâce aux chiffres.',make:l=>{const n=l<6?5:l<13?7:l<19?8:10;return {type:'nonogram',size:n,dens:.58,tol:1,sub:n+' × '+n}}},
   {id:'code',group:'Logique',name:'Code secret',desc:'Devine la combinaison de couleurs cachée.',make:l=>{const t=[[3,4,10,false],[4,5,10,false],[4,6,10,true],[4,7,9,true],[5,8,10,true]][Math.floor(l/5)];return {type:'mastermind',len:t[0],colors:t[1],att:t[2],rep:t[3],par:t[0]+3-(l%5>2?1:0),tol:0,sub:t[0]+' pions · '+t[1]+' couleurs'}}},
   {id:'devinettes',group:'Logique',name:'Devinettes',desc:'Des énigmes à résoudre avec les mots.',make:l=>({type:'answer',prompt:RIDDLES[l][0],answers:RIDDLES[l][1],hint:RIDDLES[l][2],tol:3})},
   {id:'calcul',group:'Calcul',name:'Calcul éclair',desc:'Des calculs contre la montre.',make:l=>{const count=5+Math.floor(l/3);return {type:'calc',count,secs:Math.round(count*(8-l*.16)),level:l<8?1:l<16?2:3,tol:3,sub:count+' calculs',hint:'Pour 7 × 12, calcule 7 × 10 puis ajoute 7 × 2. Pour 63 − 18, fais 63 − 20 puis ajoute 2.'}}},
@@ -1228,7 +1274,8 @@ Object.assign(RENDER,{
     const row=(g,r)=>g.slice(r*n,r*n+n),col=(g,c)=>Array.from({length:n},(_,r)=>g[r*n+c]);
     const RC=[...Array(n)].map((_,r)=>runs(row(sol,r))),CC=[...Array(n)].map((_,c)=>runs(col(sol,c)));
     const st=Array(N).fill(0),lock=Array(N).fill(false);let mode=1,painting=null;
-    board.append(el('p',{class:'prompt'},'Les chiffres donnent, dans l’ordre, les groupes de cases noires de chaque ligne et de chaque colonne. « 3 1 » veut dire : 3 cases noires, au moins un blanc, puis 1 case noire. Glisse pour remplir plusieurs cases d’un coup.'));
+    board.append(el('p',{class:'prompt'},'Les chiffres donnent, dans l’ordre, les groupes de cases noires de chaque ligne et de chaque colonne. « 3 1 » veut dire : 3 cases noires, au moins un blanc, puis 1 case noire. Glisse pour remplir plusieurs cases d’un coup. Attention : tu as 3 vies, et chaque case remplie par erreur t’en fait perdre une.'));
+    const livesEl=el('p',{class:'lives','aria-live':'polite'});let lives=3,over=false;
     const seg=el('div',{class:'seg',role:'group','aria-label':'Outil'}),bF=el('button',{'aria-pressed':'true'},'■ Remplir'),bX=el('button',{'aria-pressed':'false'},'× Marquer vide');seg.append(bF,bX);
     bF.onclick=()=>{mode=1;bF.setAttribute('aria-pressed','true');bX.setAttribute('aria-pressed','false')};
     bX.onclick=()=>{mode=2;bX.setAttribute('aria-pressed','true');bF.setAttribute('aria-pressed','false')};
@@ -1240,40 +1287,54 @@ Object.assign(RENDER,{
       for(let c=0;c<n;c++){const i=r*n+c,x=el('div',{class:'nc'+((c+1)%5===0&&c<n-1?' t5':'')+((r+1)%5===0&&r<n-1?' b5':''),'data-i':i});grid.append(x);cells.push(x)}}
     const cellFrom=e=>{const t=document.elementFromPoint(e.clientX,e.clientY);return t&&t.closest?t.closest('.nc'):null};
     const drawCell=i=>{cells[i].classList.toggle('f',st[i]===1);cells[i].classList.toggle('x',st[i]===2);cells[i].classList.toggle('lock',lock[i])};
-    function apply(i){if(lock[i]||st[i]===painting)return;st[i]=painting;drawCell(i);check()}
+    function apply(i){if(over||lock[i]||st[i]===painting)return;
+      if(painting===1&&!sol[i]){st[i]=2;lock[i]=true;cells[i].classList.add('wrong');drawCell(i);painting=null;lives--;api.error();drawLives();if(lives<=0)gameOver();return}
+      st[i]=painting;drawCell(i);check()}
+    function drawLives(){livesEl.innerHTML='Vies : '+[0,1,2].map(k=>'<span class="heart'+(k<lives?'':' lost')+'" aria-hidden="true">♥</span>').join('')+'<span class="sr"> '+lives+' sur 3</span>'}
+    function gameOver(){over=true;const msg=el('p',{class:'feedback'},'Plus de vies ! Recommence la grille.');const b=el('button',{class:'btn primary'},'Recommencer la grille');b.onclick=()=>{st.fill(0);lock.fill(false);cells.forEach((c,i)=>{c.classList.remove('wrong');drawCell(i)});lives=3;over=false;drawLives();msg.remove();b.remove();check()};board.append(msg,b)}
     function check(){const g=st.map(v=>v===1?1:0);let all=true;
       RC.forEach((rc,r)=>{const ok=runs(row(g,r)).join()===rc.join();rowEls[r].classList.toggle('ok',ok);if(!ok)all=false});
       CC.forEach((cc,c)=>{const ok=runs(col(g,c)).join()===cc.join();colEls[c].classList.toggle('ok',ok);if(!ok)all=false});
-      if(all&&!cur.won){painting=null;setTimeout(api.win,300)}}
-    grid.addEventListener('pointerdown',e=>{const c=e.target.closest('.nc');if(!c||cur.won)return;e.preventDefault();const i=+c.dataset.i,m=e.button===2?2:mode;painting=st[i]===m?0:m;apply(i)});
+      if(sol.every((v,i)=>!v||st[i]===1)&&!cur.won){painting=null;setTimeout(api.win,300)}}
+    grid.addEventListener('pointerdown',e=>{const c=e.target.closest('.nc');if(!c||cur.won||over)return;e.preventDefault();const i=+c.dataset.i,m=e.button===2?2:mode;painting=st[i]===m?0:m;apply(i)});
     grid.addEventListener('pointermove',e=>{if(painting==null)return;const c=cellFrom(e);if(c)apply(+c.dataset.i)});
     const stop=()=>{painting=null};window.addEventListener('pointerup',stop);window.addEventListener('pointercancel',stop);
     grid.addEventListener('contextmenu',e=>e.preventDefault());
-    board.append(seg,grid);check();
+    board.append(seg,livesEl,grid);drawLives();check();
     return {cleanup:()=>{window.removeEventListener('pointerup',stop);window.removeEventListener('pointercancel',stop)},hint(){const c=[];for(let i=0;i<N;i++)if(!lock[i]&&((st[i]===1)!==(sol[i]===1)))c.push(i);if(!c.length)return;const i=c[rand(c.length)];st[i]=sol[i]?1:2;lock[i]=true;drawCell(i);check()}};
   },
   mastermind(p,board){
     const COL=['#e5484d','#f5b301','#30a46c','#0091ff','#8e4ec6','#f76b15','#e93d82','#12a594'],NAMES=['rouge','jaune','vert','bleu','violet','orange','rose','turquoise'];
     let code,hist,guess,done=false;const shown=new Set();
-    const newCode=()=>{const pool=[...Array(p.colors).keys()];code=[];for(let i=0;i<p.len;i++)code.push(p.rep?rand(p.colors):pool.splice(rand(pool.length),1)[0]);hist=[];guess=[];shown.clear()};
+    const newCode=()=>{const pool=[...Array(p.colors).keys()];code=[];for(let i=0;i<p.len;i++)code.push(p.rep?rand(p.colors):pool.splice(rand(pool.length),1)[0]);hist=[];guess=Array(p.len).fill(null);shown.clear()};
     newCode();
-    board.append(el('p',{class:'prompt'},'Devine le code de '+p.len+' couleurs ('+(p.rep?'une couleur peut revenir plusieurs fois':'chaque couleur au plus une fois')+'). Après chaque essai : ● bonne couleur bien placée, ○ bonne couleur mal placée. Tu as '+p.att+' essais.'));
-    const box=el('div',{class:'mm'}),pal=el('div',{class:'palette'}),actions=el('div',{class:'row center'}),fb=el('p',{class:'feedback','aria-live':'polite'});
-    const ok=el('button',{class:'btn primary'},'Valider'),clr=el('button',{class:'btn ghost'},'Effacer');actions.append(clr,ok);
+    board.append(el('p',{class:'prompt'},'Devine le code secret de '+p.len+' couleurs ('+(p.rep?'une couleur peut revenir plusieurs fois':'chaque couleur au plus une fois')+'). Tu as '+p.att+' essais. Après chaque essai, un symbole par boule t’indique :'));
+    const legend=el('div',{class:'mm-legend'});
+    legend.innerHTML='<span><i class="fbm ok">✓</i> bonne couleur, bien placée</span><span><i class="fbm mid">↔</i> bonne couleur, mal placée</span><span><i class="fbm no">✕</i> couleur absente du code</span>';
+    const count=el('span',{class:'eyebrow'}),slots=el('div',{class:'mm-slots'}),ok=el('button',{class:'btn primary'},'Valider');
+    const inputRow=el('div',{class:'mm-input'},slots,ok);
+    const pal=el('div',{class:'palette'}),clr=el('button',{class:'btn ghost small'},'Effacer la tentative');
+    const fb=el('p',{class:'feedback','aria-live':'polite'}),actions=el('div',{class:'row center'});
+    const histTitle=el('span',{class:'eyebrow'},'Tes essais'),histBox=el('div',{class:'mm'});
+    board.append(legend,count,inputRow,pal,clr,fb,actions,histTitle,histBox);
     const peg=c=>el('span',{class:'peg'+(c==null?' empty':''),style:c==null?null:'background:'+COL[c]},c==null?'':String(c+1));
-    for(let c=0;c<p.colors;c++){const b=el('button',{class:'peg',style:'background:'+COL[c],'aria-label':NAMES[c]},String(c+1));b.onclick=()=>{if(guess.length<p.len&&!done){guess.push(c);tone(c%6,.06);draw()}};pal.append(b)}
+    for(let c=0;c<p.colors;c++){const b=el('button',{class:'peg',style:'background:'+COL[c],'aria-label':NAMES[c]},String(c+1));b.onclick=()=>{if(done)return;const i=guess.indexOf(null);if(i<0)return;guess[i]=c;tone(c%6,.06);draw()};pal.append(b)}
     function score(g){let ex=0,m=0;const cc={},gc={};g.forEach((v,i)=>{if(v===code[i])ex++;cc[code[i]]=(cc[code[i]]||0)+1;gc[v]=(gc[v]||0)+1});for(const k in gc)m+=Math.min(gc[k],cc[k]||0);return [ex,m-ex]}
-    function draw(){box.innerHTML='';
-      hist.forEach(h=>{const r=el('div',{class:'mm-row'});h.g.forEach(c=>r.append(peg(c)));const f=el('span',{class:'fb'});f.innerHTML=(h.s[0]+h.s[1])?'<b>'+'●'.repeat(h.s[0])+'</b>'+'○'.repeat(h.s[1]):'aucune';r.append(f);box.append(r)});
-      if(!done&&hist.length<p.att){const r=el('div',{class:'mm-row current'});for(let i=0;i<p.len;i++){const s=peg(guess[i]);if(guess[i]!=null){s.style.cursor='pointer';s.title='Retirer';s.onclick=()=>{guess.splice(i,1);draw()}}r.append(s)}r.append(el('span',{class:'fb'},'Essai '+(hist.length+1)+' / '+p.att));box.append(r)}
-      ok.disabled=done||guess.length<p.len}
-    ok.onclick=()=>{if(guess.length<p.len||done)return;const s=score(guess);hist.push({g:guess.slice(),s});guess=[];
+    function marks(s){const no=p.len-s[0]-s[1],w=el('span',{class:'fbs',title:s[0]+' bien placée(s), '+s[1]+' mal placée(s), '+no+' absente(s)'});
+      for(let i=0;i<s[0];i++)w.append(el('i',{class:'fbm ok'},'✓'));for(let i=0;i<s[1];i++)w.append(el('i',{class:'fbm mid'},'↔'));for(let i=0;i<no;i++)w.append(el('i',{class:'fbm no'},'✕'));return w}
+    function draw(){
+      slots.innerHTML='';guess.forEach((g,i)=>{const s=peg(g);if(g!=null&&!done){s.style.cursor='pointer';s.title='Retirer cette boule';s.onclick=()=>{guess[i]=null;draw()}}slots.append(s)});
+      count.textContent=done?'Partie terminée':'Ta tentative · essai '+(hist.length+1)+' / '+p.att;
+      ok.disabled=done||guess.includes(null);
+      histBox.innerHTML='';if(!hist.length)histBox.append(el('p',{class:'mm-empty'},'Tes essais apparaîtront ici, le plus récent en haut.'));
+      hist.slice().reverse().forEach((h,k)=>{const r=el('div',{class:'mm-row'});r.append(el('span',{class:'mm-n'},String(hist.length-k)));h.g.forEach(c=>r.append(peg(c)));r.append(marks(h.s));histBox.append(r)})}
+    ok.onclick=()=>{if(done||guess.includes(null))return;const s=score(guess);hist.push({g:guess.slice(),s});guess=Array(p.len).fill(null);
       if(s[0]===p.len){done=true;if(hist.length>p.par)api.penalty();fb.className='feedback good';fb.textContent='Code trouvé en '+hist.length+' essai'+(hist.length>1?'s':'')+' !';draw();setTimeout(api.win,500);return}
       if(hist.length>=p.att){done=true;api.error();fb.className='feedback';fb.textContent='Perdu ! Le code était : '+code.map(c=>NAMES[c]).join(', ')+'.';draw();
         const again=el('button',{class:'btn primary'},'Nouveau code');again.onclick=()=>{again.remove();fb.textContent='';done=false;newCode();draw()};actions.append(again);return}
-      draw()};
-    clr.onclick=()=>{guess=[];draw()};
-    board.append(box,pal,actions,fb);draw();
+      fb.textContent='';draw()};
+    clr.onclick=()=>{if(!done){guess=Array(p.len).fill(null);draw()}};
+    draw();
     return {hint(){if(done)return;const free=[...Array(p.len).keys()].filter(i=>!shown.has(i));if(!free.length)return;const i=free[rand(free.length)];shown.add(i);fb.className='feedback good';fb.textContent='Indice : la position '+(i+1)+' est '+NAMES[code[i]]+' (n° '+(code[i]+1)+').'}};
   },
   flow(p,board){
@@ -1469,7 +1530,11 @@ Object.assign(RENDER,{
       stage.innerHTML=svgOf(items);bar.hidden=false;
       const end=Date.now()+p.secs*1000;timer=setInterval(()=>{const left=end-Date.now();bar.firstChild.style.width=Math.max(0,left/(p.secs*10))+'%';if(left<=0)hide()},100);
       const skip=el('button',{class:'btn'},'J’ai mémorisé');skip.onclick=hide;actions.append(skip)}
-    function hide(){clearInterval(timer);if(phase!=='show')return;phase='guess';bar.hidden=true;actions.innerHTML='';
+    function hide(){clearInterval(timer);if(phase!=='show')return;phase='wait';bar.hidden=true;actions.innerHTML='';let n=3;
+      const blank=k=>'<svg class="kim" viewBox="0 0 '+cols*100+' '+rows*100+'" role="img" aria-label="Attente"><rect class="bgc" width="'+cols*100+'" height="'+rows*100+'"/><text class="kim-count" x="'+cols*50+'" y="'+(rows*50+32)+'" text-anchor="middle">'+k+'</text></svg>';
+      info.textContent='Un objet disparaît pendant que la scène est cachée…';stage.innerHTML=blank(n);
+      timer=setInterval(()=>{n--;if(n>0){stage.innerHTML=blank(n);return}clearInterval(timer);reveal()},1000)}
+    function reveal(){phase='guess';
       stage.innerHTML=svgOf(items.filter(o=>!missing.includes(o)));
       info.textContent=p.miss>1?'Quels sont les '+p.miss+' objets qui ont disparu ? Choisis-en '+p.miss+'.':'Quel objet a disparu ?';
       const absent=shuffle(types.filter(t=>!items.some(o=>o.t===t))).slice(0,p.opts-p.miss),choices=shuffle(missing.map(o=>o.t).concat(absent));let picked=[];
@@ -1485,7 +1550,68 @@ Object.assign(RENDER,{
   }
 });
 
-syncSound();renderHome();
+/* ---------- Classement (Supabase) ---------- */
+const LB={url:'__SUPABASE_URL__',key:'__SUPABASE_KEY__',site:'https://seilino.github.io/cabinet-des-enigmes/'};
+const LB_ON=/^https:\/\//.test(LB.url)&&LB.key.length>20;
+const LB_HOST=location.protocol==='file:'||/(github\.io|localhost|127\.0\.0\.1)$/.test(location.hostname);
+const PKEY='cabinet-enigmes-joueur';
+let me=null;try{me=JSON.parse(localStorage.getItem(PKEY))}catch(e){me=null}
+const saveMe=()=>{try{localStorage.setItem(PKEY,JSON.stringify(me))}catch(e){}};
+function totals(){let stars=Object.values(progress.solved).reduce((a,b)=>a+b,0),levels=0;CATS.forEach(c=>{const d=catDone(c.id);for(const k in d){stars+=d[k];levels++}});return {stars,levels,drawers:Object.keys(progress.solved).length}}
+async function lbCall(fn,body){
+  const h={'Content-Type':'application/json',apikey:LB.key};if(LB.key.startsWith('eyJ'))h.Authorization='Bearer '+LB.key;
+  const r=await fetch(LB.url.replace(/\/$/,'')+'/rest/v1/rpc/'+fn,{method:'POST',headers:h,body:JSON.stringify(body)});
+  const t=await r.text();let j=null;try{j=t?JSON.parse(t):null}catch(e){}
+  if(!r.ok){const err=new Error((j&&j.message)||('Erreur '+r.status));err.code=j&&j.code;throw err}
+  return j;
+}
+function lbError(e){if(e&&e.code==='23505')return 'Ce nom est déjà pris. Choisis-en un autre.';const m=(e&&e.message)||'';if(/nom invalide/.test(m))return 'Le nom doit faire entre 2 et 20 caractères.';if(/joueur inconnu/.test(m))return 'Ton profil n’a pas été retrouvé dans le classement. Inscris-toi à nouveau.';return 'Le classement ne répond pas. Vérifie ta connexion internet et réessaie.'}
+async function lbSubmit(name){const t=totals();
+  if(!me){const a=new Uint8Array(24);crypto.getRandomValues(a);me={id:null,secret:[...a].map(x=>x.toString(16).padStart(2,'0')).join(''),name}}
+  const id=await lbCall('lb_submit',{p_id:me.id,p_secret:me.secret,p_name:name||me.name,p_stars:t.stars,p_levels:t.levels,p_drawers:t.drawers});
+  me.id=id;me.name=name||me.name;saveMe();return id}
+let lbTimer=null;
+function lbQueue(){if(!LB_ON||!me||!me.id)return;clearTimeout(lbTimer);lbTimer=setTimeout(()=>{lbSubmit().then(()=>{if(progress.tab==='lb'&&!$('#home').hidden)lbLoad()}).catch(e=>{if(/joueur inconnu/.test((e&&e.message)||'')){me=null;try{localStorage.removeItem(PKEY)}catch(_){}}})},1200)}
+function lbRenderMe(msg){
+  const box=$('#lbMe');box.innerHTML='';const t=totals();
+  if(!me||!me.id){
+    box.append(el('h3',{},'Rejoins le classement'),el('p',{class:'muted'},'Choisis un pseudo. Ensuite, ton score est envoyé tout seul à chaque niveau réussi. N’utilise pas ton vrai nom complet.'));
+    const inp=el('input',{id:'lbName',type:'text',maxlength:'20',autocomplete:'nickname',placeholder:'Ton pseudo','aria-label':'Ton pseudo'});
+    const f=el('form',{class:'answer-row lb-form'},inp,el('button',{class:'btn primary',type:'submit'},'Rejoindre'));
+    f.addEventListener('submit',async e=>{e.preventDefault();const n=inp.value.trim();if(n.length<2){lbRenderMe('Le pseudo doit faire au moins 2 caractères.');return}
+      f.querySelector('button').disabled=true;try{await lbSubmit(n);lbRenderMe();lbLoad()}catch(err){if(me&&!me.id)me=null;lbRenderMe(lbError(err))}});
+    box.append(f);
+  }else{
+    const nm=el('b');nm.textContent=me.name;
+    box.append(el('h3',{},'Ton profil'),el('p',{},'Tu joues sous le nom ',nm,'. Ton score : '+t.stars+' étoiles, '+t.levels+' niveaux, '+t.drawers+' tiroirs.'));
+    const up=el('button',{class:'btn small'},'Envoyer mon score maintenant'),ren=el('button',{class:'btn small ghost'},'Changer de pseudo');
+    up.onclick=async()=>{up.disabled=true;try{await lbSubmit();lbRenderMe('Score envoyé.');lbLoad()}catch(err){lbRenderMe(lbError(err))}};
+    ren.onclick=()=>{const inp=el('input',{id:'lbRename',type:'text',maxlength:'20',value:me.name,'aria-label':'Nouveau pseudo'});const f=el('form',{class:'answer-row lb-form'},inp,el('button',{class:'btn primary',type:'submit'},'Enregistrer'));
+      f.addEventListener('submit',async e=>{e.preventDefault();const n=inp.value.trim();if(n.length<2)return;try{await lbSubmit(n);lbRenderMe('Pseudo changé.');lbLoad()}catch(err){lbRenderMe(lbError(err))}});ren.replaceWith(f);inp.focus()};
+    box.append(el('div',{class:'row'},up,ren));
+  }
+  if(msg)box.append(el('p',{class:'feedback'+(/envoyé|changé/.test(msg)?' good':'')},msg));
+}
+async function lbLoad(){
+  const list=$('#lbList');
+  if(LB_ON&&!LB_HOST){$('#lbMe').innerHTML='';list.innerHTML='';const p=el('p',{class:'muted'},'Le classement des joueurs se trouve sur la version en ligne du jeu : ');p.append(el('a',{href:LB.site,target:'_blank',rel:'noopener'},LB.site.replace('https://','')),'. Joue là-bas pour y apparaître.');list.append(p);return}
+  if(!LB_ON){$('#lbMe').innerHTML='';list.innerHTML='';list.append(el('p',{class:'muted'},'Le classement n’est pas encore activé.'));return}
+  lbRenderMe();
+  list.innerHTML='';list.append(el('p',{class:'muted'},'Chargement du classement…'));
+  try{
+    const rows=await lbCall('lb_top',{p_limit:50});list.innerHTML='';
+    if(!rows||!rows.length){list.append(el('p',{class:'muted'},'Personne n’est encore inscrit. Sois le premier !'));return}
+    const tb=el('table',{class:'lb'});tb.innerHTML='<thead><tr><th>Rang</th><th>Joueur</th><th>Étoiles</th><th>Niveaux</th><th>Tiroirs</th></tr></thead>';
+    const body=el('tbody');
+    rows.forEach((r,i)=>{const tr=el('tr',{class:me&&me.id===r.id?'me':null});const nm=el('td',{class:'lb-name'});nm.textContent=r.name+(me&&me.id===r.id?' (toi)':'');
+      tr.append(el('td',{class:'rank'+(i<3?' top'+(i+1):'')},String(i+1)),nm,el('td',{class:'num'},'★ '+r.stars),el('td',{class:'num'},String(r.levels)),el('td',{class:'num'},String(r.drawers)));body.append(tr)});
+    tb.append(body);const wrap=el('div',{class:'lb-wrap'});wrap.append(tb);list.append(wrap);
+  }catch(e){list.innerHTML='';const p=el('p',{class:'muted'},'Le classement est disponible sur la version en ligne du jeu : ');const a=el('a',{href:LB.site,target:'_blank',rel:'noopener'},LB.site.replace('https://',''));p.append(a,'.');
+    list.append(location.hostname.endsWith('github.io')?el('p',{class:'feedback'},lbError(e)):p)}
+}
+$('#lbRefresh').addEventListener('click',lbLoad);
+
+syncSound();renderHome();if(progress.tab==='lb')lbLoad();
 })();
 </script>
 </body>
