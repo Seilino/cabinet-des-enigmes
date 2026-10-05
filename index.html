@@ -355,6 +355,16 @@ table.lb .rank{font-family:var(--f-mono);font-weight:500;width:56px}
 table.lb .rank.top1,table.lb .rank.top2,table.lb .rank.top3{color:var(--gold);font-size:18px}
 table.lb .lb-name{font-weight:700;max-width:220px;overflow-wrap:anywhere}
 table.lb tr.me td{background:var(--gold-soft)}
+/* Compte joueur */
+.account{background:var(--surface);border:1.5px solid var(--line);border-radius:14px;padding:16px 18px;display:grid;gap:10px;margin-bottom:28px;justify-items:start}
+.account:empty{display:none}
+.account h3{font-size:19px}
+.account .acc-line{display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap}
+.account form{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.account input{font:inherit;font-size:16px;padding:9px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);width:min(240px,100%)}
+.account .acc-line>span:not(.acc-dot){flex:1 1 200px;min-width:0}
+.acc-dot{width:10px;height:10px;border-radius:50%;background:var(--ok);flex:none}
+.acc-dot.off{background:var(--line)}
 
 @media (max-width:720px){
   .tabs button{font-size:17px;padding:8px 14px}
@@ -395,6 +405,7 @@ table.lb tr.me td{background:var(--gold-soft)}
         <div><b id="tOpen">0</b><small>tiroirs ouverts</small></div>
       </div>
     </div>
+    <div class="account" id="account" aria-live="polite"></div>
     <div class="tabs" role="tablist" aria-label="Mode de jeu">
       <button role="tab" id="tabCat" aria-selected="true">Catalogues</button>
       <button role="tab" id="tabAdv" aria-selected="false">Aventure</button>
@@ -522,7 +533,7 @@ if(!progress.solved)progress.solved={};
 if(progress.sound===undefined)progress.sound=true;
 if(!progress.cat)progress.cat={};
 if(progress.tab!=='adv'&&progress.tab!=='lb')progress.tab='cat';
-function save(){try{localStorage.setItem(KEY,JSON.stringify(progress))}catch(e){}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(progress))}catch(e){}cloudQueue()}
 const isUnlocked=i=>i===0||progress.solved[i-1]!=null||progress.solved[i]!=null||(PUZZLES[i].ch!==PUZZLES[i-1].ch&&!!CHAPTERS[PUZZLES[i].ch].open);
 const TOTAL=PUZZLES.length, MAXSTARS=PUZZLES.length*3;
 const nextIndex=()=>{for(let i=0;i<PUZZLES.length;i++)if(progress.solved[i]==null)return i;return -1};
@@ -1569,7 +1580,7 @@ function lbError(e){if(e&&e.code==='23505')return 'Ce nom est déjà pris. Chois
 async function lbSubmit(name){const t=totals();
   if(!me){const a=new Uint8Array(24);crypto.getRandomValues(a);me={id:null,secret:[...a].map(x=>x.toString(16).padStart(2,'0')).join(''),name}}
   const id=await lbCall('lb_submit',{p_id:me.id,p_secret:me.secret,p_name:name||me.name,p_stars:t.stars,p_levels:t.levels,p_drawers:t.drawers});
-  me.id=id;me.name=name||me.name;saveMe();return id}
+  me.id=id;me.name=name||me.name;saveMe();cloudQueue();return id}
 let lbTimer=null;
 function lbQueue(){if(!LB_ON||!me||!me.id)return;clearTimeout(lbTimer);lbTimer=setTimeout(()=>{lbSubmit().then(()=>{if(progress.tab==='lb'&&!$('#home').hidden)lbLoad()}).catch(e=>{if(/joueur inconnu/.test((e&&e.message)||'')){me=null;try{localStorage.removeItem(PKEY)}catch(_){}}})},1200)}
 function lbRenderMe(msg){
@@ -1610,6 +1621,106 @@ async function lbLoad(){
     list.append(location.hostname.endsWith('github.io')?el('p',{class:'feedback'},lbError(e)):p)}
 }
 $('#lbRefresh').addEventListener('click',lbLoad);
+
+/* ---------- Compte joueur : progression sauvegardée en ligne ---------- */
+// Sur claude.ai : stockage privé du compte Claude (capacité db). Sur GitHub Pages : comptes Supabase (table progression).
+const ACC={mode:'local',user:null,push:null,timer:null,chain:Promise.resolve(),msg:'',busy:false};
+function mergeProg(dst,src){if(!src)return dst;
+  for(const k in src.solved||{})dst.solved[k]=Math.max(dst.solved[k]||0,src.solved[k]||0);
+  for(const id in src.cat||{}){const d=dst.cat[id]||(dst.cat[id]={});for(const l in src.cat[id])d[l]=Math.max(d[l]||0,src.cat[id][l]||0)}
+  return dst}
+const accData=()=>({solved:progress.solved,cat:progress.cat,sound:progress.sound,lb:me&&me.id?me:null});
+function cloudQueue(){if(!ACC.push)return;clearTimeout(ACC.timer);ACC.timer=setTimeout(()=>{const d=JSON.parse(JSON.stringify(accData()));
+  ACC.chain=ACC.chain.then(()=>ACC.push(d)).then(()=>{if(ACC.msg){ACC.msg='';renderAccount()}}).catch(e=>{ACC.msg='La dernière sauvegarde en ligne a échoué. Ta progression reste dans ce navigateur et sera renvoyée au prochain niveau réussi.';renderAccount()})},800)}
+function adoptCloud(data){
+  if(data){mergeProg(progress,data);if(data.lb&&data.lb.id&&data.lb.secret){me=data.lb;saveMe()}}
+  try{localStorage.setItem(KEY,JSON.stringify(progress))}catch(e){}
+  if(!$('#home').hidden)renderHome();
+}
+function clearLocal(){progress.solved={};progress.cat={};me=null;try{localStorage.setItem(KEY,JSON.stringify(progress));localStorage.removeItem(PKEY)}catch(e){}renderHome()}
+function renderAccount(){
+  const box=$('#account');box.innerHTML='';
+  const line=(on,...kids)=>el('div',{class:'acc-line'},el('span',{class:'acc-dot'+(on?'':' off'),'aria-hidden':'true'}),el('span',{},...kids));
+  if(ACC.mode==='claude'){box.append(line(true,'Ta progression est enregistrée sur ton compte Claude : tu la retrouves sur n’importe quel appareil.'))}
+  else if(ACC.mode==='claude-ro'){box.append(line(false,'Ta progression est gardée dans ce navigateur : ton accès à cette page ne permet pas de l’enregistrer sur ton compte.'))}
+  else if(ACC.mode==='sb'&&ACC.user){
+    const who=el('b');who.textContent=ACC.user.email||'ton compte';
+    const out=el('button',{class:'btn small ghost'},'Se déconnecter');
+    out.onclick=async()=>{out.disabled=true;try{await ACC.chain}catch(e){}ACC.push=null;try{await ACC.sb.auth.signOut()}catch(e){}};
+    box.append(el('div',{class:'acc-line'},el('span',{class:'acc-dot','aria-hidden':'true'}),el('span',{},'Connecté avec ',who,'. Ta progression est enregistrée sur ton compte.'),out));
+  }
+  else if(ACC.mode==='sb'){
+    box.append(el('h3',{},'Sauvegarde ta progression'),el('p',{class:'muted'},'Connecte-toi pour retrouver tes étoiles sur n’importe quel ordinateur. Ce que tu as déjà gagné ici sera ajouté à ton compte.'));
+    const em=el('input',{type:'email',autocomplete:'email',placeholder:'Adresse e-mail','aria-label':'Adresse e-mail',required:true});em.value=ACC.email||'';em.oninput=()=>{ACC.email=em.value};
+    const pw=el('input',{type:'password',autocomplete:'current-password',placeholder:'Mot de passe (6 caractères min.)','aria-label':'Mot de passe',minlength:'6',required:true});
+    const bIn=el('button',{class:'btn primary',type:'submit'},'Se connecter'),bUp=el('button',{class:'btn',type:'button'},'Créer un compte');
+    const f=el('form',{},em,pw,bIn,bUp);
+    const go=async signup=>{if(!em.value.trim()||pw.value.length<6){ACC.msg='Entre ton adresse e-mail et un mot de passe d’au moins 6 caractères.';renderAccount();return}
+      bIn.disabled=bUp.disabled=true;ACC.msg='';
+      const cred={email:em.value.trim(),password:pw.value};
+      try{const r=signup?await ACC.sb.auth.signUp(cred):await ACC.sb.auth.signInWithPassword(cred);
+        if(r.error)throw r.error;
+        if(signup&&!r.data.session)ACC.msg='Compte créé. Ouvre le lien reçu par e-mail pour l’activer, puis connecte-toi.';
+      }catch(e){ACC.msg=sbError(e,signup)}
+      if(!ACC.user)renderAccount()};
+    f.addEventListener('submit',e=>{e.preventDefault();go(false)});
+    bUp.addEventListener('click',()=>go(true));
+    box.append(f);
+  }
+  else box.append(line(false,'Ta progression est gardée dans ce navigateur.'));
+  if(ACC.msg)box.append(el('p',{class:'feedback'+(/créé/.test(ACC.msg)?' good':'')},ACC.msg));
+}
+function sbError(e,signup){const m=((e&&e.message)||'').toLowerCase();
+  if(/invalid login|invalid credentials/.test(m))return 'Adresse e-mail ou mot de passe incorrect.';
+  if(/already registered|already exists/.test(m))return 'Un compte existe déjà avec cette adresse. Clique sur « Se connecter ».';
+  if(/not confirmed/.test(m))return 'Ton adresse e-mail n’est pas encore confirmée : ouvre le lien reçu par e-mail.';
+  if(/password/.test(m))return 'Le mot de passe doit faire au moins 6 caractères.';
+  if(/sending|smtp|email rate/.test(m))return 'Impossible d’envoyer l’e-mail de confirmation pour le moment. Réessaie plus tard.';
+  if(/signups not allowed|disabled/.test(m))return 'La création de comptes est désactivée.';
+  return signup?'La création du compte a échoué. Vérifie ta connexion et réessaie.':'La connexion a échoué. Vérifie ta connexion et réessaie.'}
+
+async function accClaude(){
+  const [db,user]=await Promise.all([claude.use('db'),claude.use('user')]);
+  if(!db||!user)return;
+  const uid=await user.id();if(!uid)return;
+  const ref=db.doc('data/users/'+uid+'/progress');
+  let snap;try{snap=await ref.get()}catch(e){return}
+  const cloud=snap.exists?snap.data():null;
+  adoptCloud(cloud);
+  if(await user.can('data.write')===false){ACC.mode='claude-ro';renderAccount();return}
+  ACC.mode='claude';ACC.push=d=>ref.set(d);renderAccount();
+  const now=JSON.parse(JSON.stringify(accData()));
+  if(!cloud||JSON.stringify({s:cloud.solved,c:cloud.cat})!==JSON.stringify({s:now.solved,c:now.cat})){
+    try{await ref.set(now)}catch(e){ACC.push=null;ACC.mode='claude-ro';renderAccount()}}
+}
+function accSupabase(){
+  ACC.mode='sb';renderAccount();
+  const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js';
+  s.onerror=()=>{ACC.mode='local';renderAccount()};
+  s.onload=()=>{
+    ACC.sb=window.supabase.createClient(LB.url,LB.key,{auth:{persistSession:true,autoRefreshToken:true,storageKey:'cabinet-enigmes-auth'}});
+    let seen=null;
+    ACC.sb.auth.onAuthStateChange((ev,session)=>{const u=session&&session.user;
+      if(u&&seen===u.id)return;
+      if(!u){if(seen){seen=null;ACC.user=null;ACC.push=null;clearLocal()}ACC.user=null;renderAccount();return}
+      seen=u.id;ACC.user=u;
+      setTimeout(()=>accPull(u),0);
+    });
+  };
+  document.head.append(s);
+}
+async function accPull(u){
+  const sb=ACC.sb;ACC.msg='';renderAccount();
+  const {data,error}=await sb.from('progression').select('data').eq('user_id',u.id).maybeSingle();
+  if(error){ACC.msg='Impossible de lire ta progression en ligne. Réessaie en rechargeant la page.';renderAccount();return}
+  if(ACC.user!==u)return;
+  adoptCloud(data&&data.data);
+  ACC.push=d=>sb.from('progression').upsert({user_id:u.id,data:d,updated_at:new Date().toISOString()}).then(r=>{if(r.error)throw r.error});
+  cloudQueue();renderAccount();
+}
+if(LB_ON&&LB_HOST)accSupabase();
+else if(window.claude&&typeof window.claude.use==='function'){renderAccount();accClaude()}
+else renderAccount();
 
 syncSound();renderHome();if(progress.tab==='lb')lbLoad();
 })();

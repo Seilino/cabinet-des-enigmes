@@ -27,4 +27,10 @@ Un jeu de casse-têtes pour faire travailler le cerveau, qui se joue directement
 - Chaque niveau rapporte jusqu’à 3 étoiles : une de moins si tu prends un indice, une de moins si tu fais trop d’erreurs.
 - Un niveau se débloque quand le précédent est réussi. Un même niveau donne toujours la même grille.
 - « Partie au hasard » crée une nouvelle grille à chaque fois.
-- La progression est enregistrée dans le navigateur.
+- Avec un compte (e-mail + mot de passe), la progression est enregistrée en ligne et se retrouve sur n’importe quel ordinateur. Sans compte, elle reste dans le navigateur.
+
+## Comptes joueurs (Supabase)
+
+Une seule fois, dans le projet Supabase :
+1. SQL Editor : exécuter `supabase-progression.sql` (table `progression`, chaque joueur ne voit que sa ligne).
+2. Authentication > Email : désactiver « Confirm email », sinon les joueurs ne peuvent pas activer leur compte avec le service d’e-mail par défaut de Supabase.
