@@ -365,6 +365,13 @@ table.lb tr.me td{background:var(--gold-soft)}
 .account .acc-line>span:not(.acc-dot){flex:1 1 200px;min-width:0}
 .acc-dot{width:10px;height:10px;border-radius:50%;background:var(--ok);flex:none}
 .acc-dot.off{background:var(--line)}
+#accPop{position:fixed;inset:0;background:color-mix(in srgb, var(--bg) 70%, transparent);backdrop-filter:blur(4px);display:grid;place-items:center;padding:16px;z-index:11;overflow-y:auto}
+#accPop .win-card{text-align:left;gap:12px}
+#accPop .win-card h2{font-size:28px}
+#accPop form{display:grid;gap:10px}
+#accPop input{font:inherit;font-size:16px;padding:11px 14px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
+#accPop .row{justify-content:flex-start}
+#accPop .later{justify-self:center;margin-top:2px}
 
 @media (max-width:720px){
   .tabs button{font-size:17px;padding:8px 14px}
@@ -459,6 +466,8 @@ table.lb tr.me td{background:var(--gold-soft)}
     </div>
   </section>
 </div>
+
+<div id="accPop" hidden><div class="win-card" role="dialog" aria-modal="true" aria-labelledby="accPopTitle" id="accPopCard"></div></div>
 
 <div id="overlay" hidden>
   <div class="win-card" role="dialog" aria-modal="true" aria-labelledby="winTitle">
@@ -1650,29 +1659,55 @@ function renderAccount(){
     box.append(el('div',{class:'acc-line'},el('span',{class:'acc-dot','aria-hidden':'true'}),el('span',{},'Connecté avec ',who,'. Ta progression est enregistrée sur ton compte.'),out));
   }
   else if(ACC.mode==='sb'){
-    box.append(el('h3',{},'Sauvegarde ta progression'),el('p',{class:'muted'},'Connecte-toi pour retrouver tes étoiles sur n’importe quel ordinateur. Ce que tu as déjà gagné ici sera ajouté à ton compte.'));
-    const em=el('input',{type:'email',autocomplete:'email',placeholder:'Adresse e-mail','aria-label':'Adresse e-mail',required:true});em.value=ACC.email||'';em.oninput=()=>{ACC.email=em.value};
-    const pw=el('input',{type:'password',autocomplete:'current-password',placeholder:'Mot de passe (6 caractères min.)','aria-label':'Mot de passe',minlength:'6',required:true});
-    const bIn=el('button',{class:'btn primary',type:'submit'},'Se connecter'),bUp=el('button',{class:'btn',type:'button'},'Créer un compte');
-    const f=el('form',{},em,pw,bIn,bUp);
-    const go=async signup=>{if(!em.value.trim()||pw.value.length<6){ACC.msg='Entre ton adresse e-mail et un mot de passe d’au moins 6 caractères.';renderAccount();return}
-      bIn.disabled=bUp.disabled=true;ACC.msg='';
-      const cred={email:em.value.trim(),password:pw.value};
-      try{const r=signup?await ACC.sb.auth.signUp(cred):await ACC.sb.auth.signInWithPassword(cred);
-        if(r.error)throw r.error;
-        if(signup&&!r.data.session)ACC.msg='Compte créé. Ouvre le lien reçu par e-mail pour l’activer, puis connecte-toi.';
-      }catch(e){ACC.msg=sbError(e,signup)}
-      if(!ACC.user)renderAccount()};
-    f.addEventListener('submit',e=>{e.preventDefault();go(false)});
-    bUp.addEventListener('click',()=>go(true));
-    box.append(f);
+    box.append(el('h3',{},'Sauvegarde ta progression'),el('p',{class:'muted'},'Connecte-toi pour retrouver tes étoiles sur n’importe quel ordinateur. Ce que tu as déjà gagné ici sera ajouté à ton compte.'),authForm(false));
   }
   else box.append(line(false,'Ta progression est gardée dans ce navigateur.'));
-  if(ACC.msg)box.append(el('p',{class:'feedback'+(/créé/.test(ACC.msg)?' good':'')},ACC.msg));
+  if(ACC.msg&&!ACC.pop)box.append(accMsg());
+  renderPop();
 }
+const accMsg=()=>el('p',{class:'feedback'+(/créé/.test(ACC.msg)?' good':''),'aria-live':'polite'},ACC.msg);
+// Formulaire e-mail + mot de passe, partagé par l'encadré et la fenêtre d'accueil.
+function authForm(signupFirst){
+  const em=el('input',{type:'email',autocomplete:'email',placeholder:'Adresse e-mail','aria-label':'Adresse e-mail',required:true});em.value=ACC.email||'';em.oninput=()=>{ACC.email=em.value};
+  const pw=el('input',{type:'password',autocomplete:signupFirst?'new-password':'current-password',placeholder:'Mot de passe (6 caractères min.)','aria-label':'Mot de passe',minlength:'6',required:true});
+  const bIn=el('button',{class:'btn'+(signupFirst?'':' primary'),type:signupFirst?'button':'submit'},signupFirst?'J’ai déjà un compte':'Se connecter');
+  const bUp=el('button',{class:'btn'+(signupFirst?' primary':''),type:signupFirst?'submit':'button'},'Créer un compte');
+  const f=signupFirst?el('form',{},em,pw,el('div',{class:'row'},bUp,bIn)):el('form',{},em,pw,bIn,bUp);
+  const go=async signup=>{if(!em.value.trim()||pw.value.length<6){ACC.msg='Entre ton adresse e-mail et un mot de passe d’au moins 6 caractères.';renderAccount();return}
+    bIn.disabled=bUp.disabled=true;ACC.msg='';
+    const cred={email:em.value.trim(),password:pw.value};
+    try{const r=signup?await ACC.sb.auth.signUp(cred):await ACC.sb.auth.signInWithPassword(cred);
+      if(r.error)throw r.error;
+      if(signup&&!r.data.session)ACC.msg='Compte créé. Ouvre le lien reçu par e-mail pour l’activer, puis connecte-toi.';
+    }catch(e){ACC.msg=sbError(e,signup)}
+    if(!ACC.user)renderAccount()};
+  f.addEventListener('submit',e=>{e.preventDefault();go(signupFirst)});
+  (signupFirst?bIn:bUp).addEventListener('click',()=>go(!signupFirst));
+  return f;
+}
+// Fenêtre d'accueil : proposée une fois par visite aux joueurs non connectés.
+const POPKEY='cabinet-enigmes-popup-vu';
+function renderPop(){
+  const pop=$('#accPop'),card=$('#accPopCard');
+  if(!ACC.pop||ACC.mode!=='sb'||ACC.user){if(!pop.hidden){pop.hidden=true;document.removeEventListener('keydown',popKey)}return}
+  const t=totals(),had=t.stars>0;
+  const focused=document.activeElement&&card.contains(document.activeElement)?document.activeElement.getAttribute('type'):null;
+  card.innerHTML='';
+  const later=el('button',{class:'btn small ghost later',type:'button'},'Plus tard');later.onclick=closePop;
+  card.append(el('span',{class:'eyebrow'},'Bienvenue au Cabinet'),el('h2',{id:'accPopTitle'},had?'Sauvegarde tes étoiles':'Crée ton compte'),
+    el('p',{class:'muted'},had?'Tu as déjà '+t.stars+' étoile'+(t.stars>1?'s':'')+' sur cet appareil. Crée un compte, ou connecte-toi, pour les garder et les retrouver sur n’importe quel ordinateur.':'Avec un compte, ta progression est sauvegardée et tu la retrouves sur n’importe quel ordinateur.'),
+    authForm(true));
+  if(ACC.msg)card.append(accMsg());
+  card.append(later);
+  const wasHidden=pop.hidden;pop.hidden=false;
+  if(wasHidden){document.addEventListener('keydown',popKey);card.querySelector('input').focus()}
+  else if(focused){const x=card.querySelector('input[type="'+focused+'"]');if(x)x.focus()}
+}
+function popKey(e){if(e.key==='Escape')closePop()}
+function closePop(){ACC.pop=false;ACC.msg='';try{sessionStorage.setItem(POPKEY,'1')}catch(e){}renderAccount()}
 function sbError(e,signup){const m=((e&&e.message)||'').toLowerCase();
   if(/invalid login|invalid credentials/.test(m))return 'Adresse e-mail ou mot de passe incorrect.';
-  if(/already registered|already exists/.test(m))return 'Un compte existe déjà avec cette adresse. Clique sur « Se connecter ».';
+  if(/already registered|already exists/.test(m))return 'Un compte existe déjà avec cette adresse : connecte-toi avec ton mot de passe.';
   if(/not confirmed/.test(m))return 'Ton adresse e-mail n’est pas encore confirmée : ouvre le lien reçu par e-mail.';
   if(/password/.test(m))return 'Le mot de passe doit faire au moins 6 caractères.';
   if(/sending|smtp|email rate/.test(m))return 'Impossible d’envoyer l’e-mail de confirmation pour le moment. Réessaie plus tard.';
@@ -1702,8 +1737,8 @@ function accSupabase(){
     let seen=null;
     ACC.sb.auth.onAuthStateChange((ev,session)=>{const u=session&&session.user;
       if(u&&seen===u.id)return;
-      if(!u){if(seen){seen=null;ACC.user=null;ACC.push=null;clearLocal()}ACC.user=null;renderAccount();return}
-      seen=u.id;ACC.user=u;
+      if(!u){if(seen){seen=null;ACC.user=null;ACC.push=null;clearLocal()}else if(ev==='INITIAL_SESSION'){let vu=false;try{vu=sessionStorage.getItem(POPKEY)==='1'}catch(e){}ACC.pop=!vu}ACC.user=null;renderAccount();return}
+      seen=u.id;ACC.user=u;ACC.pop=false;
       setTimeout(()=>accPull(u),0);
     });
   };
