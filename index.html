@@ -371,6 +371,7 @@ table.lb tr.me td{background:var(--gold-soft)}
 #accPop input{font:inherit;font-size:16px;padding:11px 14px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);width:100%}
 #accPop .row{justify-content:flex-start}
 #accPop .later{justify-self:center;margin-top:2px}
+.linkbtn{border:0;background:none;padding:0;font:inherit;font-size:14px;color:var(--accent);text-decoration:underline;cursor:pointer;justify-self:start}
 
 @media (max-width:720px){
   .tabs button{font-size:17px;padding:8px 14px}
@@ -1639,7 +1640,7 @@ function mergeProg(dst,src){if(!src)return dst;
   return dst}
 const accData=()=>({solved:progress.solved,cat:progress.cat,sound:progress.sound,lb:me&&me.id?me:null});
 function cloudQueue(){if(!ACC.push)return;clearTimeout(ACC.timer);ACC.timer=setTimeout(()=>{const d=JSON.parse(JSON.stringify(accData()));
-  ACC.chain=ACC.chain.then(()=>ACC.push(d)).then(()=>{if(ACC.msg){ACC.msg='';renderAccount()}}).catch(e=>{ACC.msg='La dernière sauvegarde en ligne a échoué. Ta progression reste dans ce navigateur et sera renvoyée au prochain niveau réussi.';renderAccount()})},800)}
+  ACC.chain=ACC.chain.then(()=>ACC.push(d)).then(()=>{if(/a échoué/.test(ACC.msg)){ACC.msg='';renderAccount()}}).catch(e=>{ACC.msg='La dernière sauvegarde en ligne a échoué. Ta progression reste dans ce navigateur et sera renvoyée au prochain niveau réussi.';renderAccount()})},800)}
 function adoptCloud(data){
   if(data){mergeProg(progress,data);if(data.lb&&data.lb.id&&data.lb.secret){me=data.lb;saveMe()}}
   try{localStorage.setItem(KEY,JSON.stringify(progress))}catch(e){}
@@ -1664,7 +1665,7 @@ function renderAccount(){
   if(ACC.msg&&!ACC.pop)box.append(accMsg());
   renderPop();
 }
-const accMsg=()=>el('p',{class:'feedback'+(/créé/.test(ACC.msg)?' good':''),'aria-live':'polite'},ACC.msg);
+const accMsg=()=>el('p',{class:'feedback'+(/créé|envoyé|changé/.test(ACC.msg)?' good':''),'aria-live':'polite'},ACC.msg);
 // Formulaire e-mail + mot de passe, partagé par l'encadré et la fenêtre d'accueil.
 function authForm(signupFirst){
   const em=el('input',{type:'email',autocomplete:'email',placeholder:'Adresse e-mail','aria-label':'Adresse e-mail',required:true});em.value=ACC.email||'';em.oninput=()=>{ACC.email=em.value};
@@ -1682,12 +1683,22 @@ function authForm(signupFirst){
     if(!ACC.user)renderAccount()};
   f.addEventListener('submit',e=>{e.preventDefault();go(signupFirst)});
   (signupFirst?bIn:bUp).addEventListener('click',()=>go(!signupFirst));
+  const fg=el('button',{class:'linkbtn',type:'button'},'Mot de passe oublié ?');
+  fg.onclick=async()=>{const mail=em.value.trim();
+    if(!/^\S+@\S+\.\S+$/.test(mail)){ACC.msg='Écris d’abord ton adresse e-mail, puis clique sur « Mot de passe oublié ? ».';renderAccount();return}
+    fg.disabled=true;
+    try{const r=await ACC.sb.auth.resetPasswordForEmail(mail,{redirectTo:location.origin+location.pathname});if(r.error)throw r.error;
+      ACC.msg='E-mail envoyé à '+mail+' (si un compte existe avec cette adresse). Ouvre le lien qu’il contient pour choisir un nouveau mot de passe. Pense à regarder dans les spams.'}
+    catch(e){const m=((e&&e.message)||'').toLowerCase();ACC.msg=/rate|security purposes|seconds/.test(m)?'Trop de demandes d’un coup. Réessaie un peu plus tard.':'L’e-mail n’a pas pu être envoyé. Réessaie plus tard.'}
+    renderAccount()};
+  f.append(fg);
   return f;
 }
 // Fenêtre d'accueil : proposée une fois par visite aux joueurs non connectés.
 const POPKEY='cabinet-enigmes-popup-vu';
 function renderPop(){
   const pop=$('#accPop'),card=$('#accPopCard');
+  if(ACC.recovery&&ACC.mode==='sb'){renderRecovery(pop,card);return}
   if(!ACC.pop||ACC.mode!=='sb'||ACC.user){if(!pop.hidden){pop.hidden=true;document.removeEventListener('keydown',popKey)}return}
   const t=totals(),had=t.stars>0;
   const focused=document.activeElement&&card.contains(document.activeElement)?document.activeElement.getAttribute('type'):null;
@@ -1702,8 +1713,25 @@ function renderPop(){
   if(wasHidden){document.addEventListener('keydown',popKey);card.querySelector('input').focus()}
   else if(focused){const x=card.querySelector('input[type="'+focused+'"]');if(x)x.focus()}
 }
+// Retour depuis le lien « Mot de passe oublié » : le joueur choisit un nouveau mot de passe. Ses données ne bougent pas.
+function renderRecovery(pop,card){
+  card.innerHTML='';
+  const pw=el('input',{type:'password',autocomplete:'new-password',placeholder:'Nouveau mot de passe (6 caractères min.)','aria-label':'Nouveau mot de passe',minlength:'6',required:true});
+  const ok=el('button',{class:'btn primary',type:'submit'},'Enregistrer');
+  const f=el('form',{},pw,ok);
+  f.addEventListener('submit',async e=>{e.preventDefault();if(pw.value.length<6){ACC.msg='Le mot de passe doit faire au moins 6 caractères.';renderAccount();return}
+    ok.disabled=true;
+    try{const r=await ACC.sb.auth.updateUser({password:pw.value});if(r.error)throw r.error;ACC.recovery=false;ACC.msg='Mot de passe changé. Tu es connecté, ta progression est toujours là.'}
+    catch(err){ACC.msg=/different|same/.test(((err&&err.message)||'').toLowerCase())?'Choisis un mot de passe différent de l’ancien.':'Le changement a échoué. Redemande un lien depuis « Mot de passe oublié ? ».'}
+    renderAccount()});
+  const later=el('button',{class:'btn small ghost later',type:'button'},'Annuler');later.onclick=()=>{ACC.recovery=false;ACC.msg='';renderAccount()};
+  card.append(el('span',{class:'eyebrow'},'Mot de passe oublié'),el('h2',{id:'accPopTitle'},'Choisis un nouveau mot de passe'),f);
+  if(ACC.msg)card.append(accMsg());
+  card.append(later);
+  const wasHidden=pop.hidden;pop.hidden=false;if(wasHidden){document.addEventListener('keydown',popKey);pw.focus()}
+}
 function popKey(e){if(e.key==='Escape')closePop()}
-function closePop(){ACC.pop=false;ACC.msg='';try{sessionStorage.setItem(POPKEY,'1')}catch(e){}renderAccount()}
+function closePop(){ACC.pop=false;ACC.recovery=false;ACC.msg='';try{sessionStorage.setItem(POPKEY,'1')}catch(e){}renderAccount()}
 function sbError(e,signup){const m=((e&&e.message)||'').toLowerCase();
   if(/invalid login|invalid credentials/.test(m))return 'Adresse e-mail ou mot de passe incorrect.';
   if(/already registered|already exists/.test(m))return 'Un compte existe déjà avec cette adresse : connecte-toi avec ton mot de passe.';
@@ -1735,9 +1763,10 @@ function accSupabase(){
     ACC.sb=window.supabase.createClient(LB.url,LB.key,{auth:{persistSession:true,autoRefreshToken:true,storageKey:'cabinet-enigmes-auth'}});
     let seen=null;
     ACC.sb.auth.onAuthStateChange((ev,session)=>{const u=session&&session.user;
+      if(ev==='PASSWORD_RECOVERY'){ACC.recovery=true;ACC.msg='';setTimeout(renderAccount,0)}
       if(u&&seen===u.id)return;
       if(!u){if(seen){seen=null;ACC.user=null;ACC.push=null;clearLocal()}else if(ev==='INITIAL_SESSION'){let vu=false;try{vu=sessionStorage.getItem(POPKEY)==='1'}catch(e){}ACC.pop=!vu}ACC.user=null;renderAccount();return}
-      seen=u.id;ACC.user=u;ACC.pop=false;
+      seen=u.id;ACC.user=u;ACC.pop=false;if(ACC.msg&&!/changé/.test(ACC.msg))ACC.msg='';
       setTimeout(()=>accPull(u),0);
     });
   };
