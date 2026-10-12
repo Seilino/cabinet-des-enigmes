@@ -108,6 +108,7 @@ button{font:inherit;color:inherit}
 .answer-row input,.calc input{font:inherit;font-size:20px;padding:10px 14px;border-radius:10px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);width:min(260px,100%)}
 .feedback{min-height:1.5em;color:var(--bad);font-weight:700}
 .feedback.good{color:var(--ok)}
+.feedback.wait{color:var(--muted)}
 .hint-box{margin-top:16px;display:grid;gap:10px;justify-items:start}
 .hint-text{background:var(--gold-soft);border-radius:10px;padding:12px 16px;max-width:65ch}
 .shake{animation:shake .35s}
@@ -1665,7 +1666,7 @@ function renderAccount(){
   if(ACC.msg&&!ACC.pop)box.append(accMsg());
   renderPop();
 }
-const accMsg=()=>el('p',{class:'feedback'+(/créé|envoyé|changé/.test(ACC.msg)?' good':''),'aria-live':'polite'},ACC.msg);
+const accMsg=()=>el('p',{class:'feedback'+(/créé|envoyé|changé/.test(ACC.msg)?' good':/en cours/.test(ACC.msg)?' wait':''),'aria-live':'polite'},ACC.msg);
 // Formulaire e-mail + mot de passe, partagé par l'encadré et la fenêtre d'accueil.
 function authForm(signupFirst){
   const em=el('input',{type:'email',autocomplete:'email',placeholder:'Adresse e-mail','aria-label':'Adresse e-mail',required:true});em.value=ACC.email||'';em.oninput=()=>{ACC.email=em.value};
@@ -1683,14 +1684,15 @@ function authForm(signupFirst){
     if(!ACC.user)renderAccount()};
   f.addEventListener('submit',e=>{e.preventDefault();go(signupFirst)});
   (signupFirst?bIn:bUp).addEventListener('click',()=>go(!signupFirst));
-  const fg=el('button',{class:'linkbtn',type:'button'},'Mot de passe oublié ?');
+  const fg=el('button',{class:'linkbtn',type:'button'},ACC.sending?'Envoi de l’e-mail…':'Mot de passe oublié ?');fg.disabled=!!ACC.sending;
   fg.onclick=async()=>{const mail=em.value.trim();
     if(!/^\S+@\S+\.\S+$/.test(mail)){ACC.msg='Écris d’abord ton adresse e-mail, puis clique sur « Mot de passe oublié ? ».';renderAccount();return}
-    fg.disabled=true;
-    try{const r=await ACC.sb.auth.resetPasswordForEmail(mail,{redirectTo:location.origin+location.pathname});if(r.error)throw r.error;
+    ACC.sending=true;ACC.msg='Envoi de l’e-mail en cours…';renderAccount();
+    try{const r=await Promise.race([ACC.sb.auth.resetPasswordForEmail(mail,{redirectTo:location.origin+location.pathname}),new Promise((_,no)=>setTimeout(()=>no(new Error('timeout')),30000))]);if(r.error)throw r.error;
       ACC.msg='E-mail envoyé à '+mail+' (si un compte existe avec cette adresse). Ouvre le lien qu’il contient pour choisir un nouveau mot de passe. Pense à regarder dans les spams.'}
-    catch(e){const m=((e&&e.message)||'').toLowerCase();ACC.msg=/rate|security purposes|seconds/.test(m)?'Trop de demandes d’un coup. Réessaie un peu plus tard.':'L’e-mail n’a pas pu être envoyé. Réessaie plus tard.'}
-    renderAccount()};
+    catch(e){console.error('Mot de passe oublié :',e);const m=((e&&e.message)||'').toLowerCase();
+      ACC.msg=/rate|security purposes|seconds/.test(m)?'Trop de demandes d’un coup. Attends une minute et réessaie.':m==='timeout'?'Le serveur met trop de temps à répondre. Réessaie dans un moment.':/sending|smtp|mail/.test(m)?'L’e-mail n’a pas pu partir : le service d’envoi des e-mails du jeu ne répond pas. Réessaie plus tard.':'L’e-mail n’a pas pu être envoyé. Réessaie plus tard.'}
+    ACC.sending=false;renderAccount()};
   f.append(fg);
   return f;
 }
